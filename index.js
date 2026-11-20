@@ -222,8 +222,8 @@ app.get('/user',async(req,res)=>{
     res.send(result)
 })
 
-app.get('/', (req, res) => {
-  res.send('Hello World!');
+app.get("/", (req, res) => {
+  res.send("Pizza Baba Server is Running!");
 });
 
 app.listen(port, () => {
