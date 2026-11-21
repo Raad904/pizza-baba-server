@@ -30,67 +30,46 @@ const pizzaItems = database.collection("pizzaItems")
 const ordersCollection = database.collection("orders");
 
 
-
-// Place Order API
-app.post("/orders", async (req, res) => {
+//get orders
+app.get("/orders/customer/:customerId", async (req, res) => {
   try {
-    const { itemId, deliveryAddress } = req.body;
+    const { customerId } = req.params;
 
-    // Validate required fields
-    if (!itemId || !deliveryAddress?.trim()) {
+    if (!customerId) {
       return res.status(400).json({
-        error: "Item ID and delivery address are required.",
+        error: "Customer user ID is required.",
       });
     }
 
-    // Validate MongoDB ID
-    if (!ObjectId.isValid(itemId)) {
-      return res.status(400).json({
-        error: "Invalid item ID.",
-      });
-    }
+    const customerOrders = await ordersCollection
+      .find({
+        customerId: customerId,
+      })
+      .sort({ _id: -1 })
+      .toArray();
 
-    // Find menu item
-    const item = await pizzaItems.findOne({
-      _id: new ObjectId(itemId),
-    });
-
-    if (!item) {
-      return res.status(404).json({
-        error: "Menu item not found.",
-      });
-    }
-
-    // Create order
-    const newOrder = {
-      itemId: new ObjectId(itemId),
-      itemName: item.name,
-      itemImage: item.image || item.images?.[0] || "",
-      price: Number(item.price || 0),
-      category: item.category || "",
-      vendorId: item.vendorId || null,
-      vendorName: item.vendorName || "Vendor",
-      deliveryAddress: deliveryAddress.trim(),
-      status: "pending",
-      createdAt: new Date(),
-    };
-
-    const result = await ordersCollection.insertOne(newOrder);
-
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: "Order placed successfully!",
-      orderId: result.insertedId,
+      totalOrders: customerOrders.length,
+      orders: customerOrders,
     });
   } catch (error) {
-    console.error("Place Order Error:", error);
+    console.error("Fetch Customer Orders Error:", error);
 
     res.status(500).json({
-      error: "Failed to place order.",
+      error: "Failed to fetch customer orders.",
     });
   }
 });
 
+
+
+//post orders
+app.post('/orders', async (req, res) => {
+    const item = req.body;
+    const result = await ordersCollection.insertOne(item);
+    res.send(result)
+})
 
 // Get single menu item by ID
 app.get("/item/:id", async (req, res) => {
