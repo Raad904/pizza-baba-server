@@ -30,6 +30,42 @@ const pizzaItems = database.collection("pizzaItems")
 const ordersCollection = database.collection("orders");
 
 
+
+
+ // Get orders for a specific vendor
+app.get("/orders/vendor/:vendorId", async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+
+    if (!vendorId) {
+      return res.status(400).json({
+        error: "Vendor ID is required.",
+      });
+    }
+
+    const vendorOrders = await ordersCollection
+      .find({
+        vendorId: vendorId,
+      })
+      .sort({ _id: -1 })
+      .toArray();
+
+    res.status(200).json({
+      success: true,
+      totalOrders: vendorOrders.length,
+      orders: vendorOrders,
+    });
+  } catch (error) {
+    console.error("Fetch Vendor Orders Error:", error);
+
+    res.status(500).json({
+      error: "Failed to fetch vendor orders.",
+    });
+  }
+});
+
+
+
 //get orders
 app.get("/orders/customer/:customerId", async (req, res) => {
   try {
