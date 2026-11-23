@@ -32,6 +32,263 @@ const ordersCollection = database.collection("orders");
 
 
 
+
+
+
+
+/* =========================================
+   CANCEL CUSTOMER ORDER
+========================================= */
+
+app.delete("/orders/:orderId", async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        error: "Invalid order ID.",
+      });
+    }
+
+    const result = await ordersCollection.updateOne(
+      {
+        _id: new ObjectId(orderId),
+        status: { $in: ["Pending", "pending"] },
+      },
+      {
+        $set: {
+          status: "Cancelled",
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        error: "Order not found or already handled.",
+      });
+    }
+
+    const updatedOrder = await ordersCollection.findOne({
+      _id: new ObjectId(orderId),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Order cancelled successfully.",
+      order: updatedOrder,
+    });
+  } catch (error) {
+    console.error("Cancel Order Error:", error);
+
+    return res.status(500).json({
+      error: error.message || "Failed to cancel order.",
+    });
+  }
+});
+
+
+
+
+
+
+
+
+/* =========================================
+   UPDATE MENU ITEM STATUS
+========================================= */
+
+app.patch("/items/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        error: "Invalid item ID.",
+      });
+    }
+
+    const allowedStatuses = [
+      "Pending",
+      "Approved",
+      "Rejected",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        error: "Invalid status.",
+      });
+    }
+
+    const result = await pizzaItems.updateOne(
+      {
+        _id: new ObjectId(id),
+      },
+      {
+        $set: {
+          status,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        error: "Menu item not found.",
+      });
+    }
+
+    const updatedItem = await pizzaItems.findOne({
+      _id: new ObjectId(id),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Item status updated to ${status}.`,
+      item: updatedItem,
+    });
+  } catch (error) {
+    console.error("Update Menu Item Status Error:", error);
+
+    return res.status(500).json({
+      error: error.message || "Failed to update item status.",
+    });
+  }
+});
+
+
+
+/* =========================================
+   DELETE MENU ITEM
+========================================= */
+
+app.delete("/items/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        error: "Invalid item ID.",
+      });
+    }
+
+    const result = await pizzaItems.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        error: "Menu item not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Menu item deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete Menu Item Error:", error);
+
+    return res.status(500).json({
+      error: error.message || "Failed to delete menu item.",
+    });
+  }
+});
+
+
+
+
+
+
+//change status
+app.patch("/orders/vendor/:orderId/status", async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { vendorId, action } = req.body;
+
+    if (!ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        error: "Invalid order ID.",
+      });
+    }
+
+    if (!vendorId) {
+      return res.status(400).json({
+        error: "Vendor ID is required.",
+      });
+    }
+
+    if (!["accept", "reject"].includes(action)) {
+      return res.status(400).json({
+        error: "Invalid action.",
+      });
+    }
+
+    const newStatus =
+      action === "accept" ? "Accepted" : "Rejected";
+
+    const order = await ordersCollection.findOne({
+      _id: new ObjectId(orderId),
+      vendorId: vendorId,
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        error: "Order not found.",
+      });
+    }
+
+    if (
+      !["Pending", "pending"].includes(order.status)
+    ) {
+      return res.status(409).json({
+        error: "This order has already been handled.",
+      });
+    }
+
+    const result = await ordersCollection.updateOne(
+      {
+        _id: new ObjectId(orderId),
+        vendorId: vendorId,
+        status: order.status,
+      },
+      {
+        $set: {
+          status: newStatus,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(409).json({
+        error: "Order status could not be updated.",
+      });
+    }
+
+    const updatedOrder = await ordersCollection.findOne({
+      _id: new ObjectId(orderId),
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Order ${newStatus} successfully.`,
+      order: updatedOrder,
+    });
+  } catch (error) {
+    console.error("Update Order Status Error:", error);
+
+    res.status(500).json({
+      error: "Failed to update order status.",
+    });
+  }
+});
+
+
+
+
+
  // Get orders for a specific vendor
 app.get("/orders/vendor/:vendorId", async (req, res) => {
   try {
@@ -102,7 +359,12 @@ app.get("/orders/customer/:customerId", async (req, res) => {
 
 //post orders
 app.post('/orders', async (req, res) => {
-    const item = req.body;
+    // Record the exact order time on the server (authoritative UTC ISO string).
+    // Kept after the spread so a client-sent timestamp can never override it.
+    const item = {
+      ...req.body,
+      createdAt: new Date().toISOString(),
+    };
     const result = await ordersCollection.insertOne(item);
     res.send(result)
 })
